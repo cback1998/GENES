@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gene Finder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div class="max-w-5xl mx-auto p-6">
+    <header class="mb-6">
+      <h1 class="text-3xl font-semibold">Gene Finder</h1>
+      <p class="text-gray-600 mt-1">
+        输入基因符号（例如 <span class="mono">TP53</span>、<span class="mono">BRCA1</span>），自动查询 <span class="font-medium">Ensembl</span> 和 <span class="font-medium">UniProt</span> 基因信息。
+      </p>
+    </header>
+    <section class="bg-white rounded-xl shadow p-5">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div class="flex-grow">
+          <label class="block text-sm text-gray-600 mb-1">基因符号 / Gene symbol</label>
+          <input id="geneInput" type="text" placeholder="例：TP53, BRCA1" class="w-full border rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <button id="geneSearchBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl">查询</button>
+      </div>
+    </section>
+    <section id="geneResult" class="mt-6 space-y-4"></section>
+  </div>
+<script>
+document.getElementById('geneSearchBtn').addEventListener('click', searchGene);
+
+async function searchGene() {
+  const gene = document.getElementById('geneInput').value.trim();
+  const resultDiv = document.getElementById('geneResult');
+  if (!gene) {
+    resultDiv.innerHTML = '<p class="text-red-600">请输入基因符号。</p>';
+    return;
+  }
+  resultDiv.innerHTML = '<p class="text-gray-600">查询中…</p>';
+  try {
+    const ensembUrl = 'https://rest.ensembl.org/lookup/symbol/homo_sapiens/' + encodeURIComponent(gene) + '?content-type=application/json';
+    const ensembResp = await fetch(ensembUrl);
+    const ensembData = ensembResp.ok ? await ensembResp.json() : null;
+
+    const uniprotUrl = 'https://rest.uniprot.org/uniprotkb/search?query=gene:' + encodeURIComponent(gene) + '&format=tsv&fields=accession,organism_name,protein_name&size=1';
+    const uniprotResp = await fetch(uniprotUrl);
+    const uniprotText = await uniprotResp.text();
+    let uniprotData = null;
+    if (uniprotText.trim()) {
+      const lines = uniprotText.split('\n');
+      if (lines.length > 1) {
+        const parts = lines[1].split('\t');
+        uniprotData = {
+          accession: parts[0],
+          organism_name: parts[1],
+          protein_name: parts[2]
+        };
+      }
+    }
+
+    let html = '';
+    if (ensembData) {
+      html += '<div class="bg-white rounded-xl shadow p-5">';
+      html += '<h2 class="text-xl font-medium mb-2">Ensembl 基因信息</h2>';
+      html += '<p>基因 ID: <span class="mono">' + ensembData.id + '</span></p>';
+      html += '<p>描述: ' + (ensembData.description || '无') + '</p>';
+      html += '<p>位置: ' + (ensembData.seq_region_name || 'N/A') + ':' + (ensembData.start || '') + '-' + (ensembData.end || '') + '</p>';
+      html += '<p><a href="https://www.ensembl.org/id/' + ensembData.id + '" target="_blank" class="text-indigo-600 hover:underline">查看 Ensembl 页面</a></p>';
+      html += '</div>';
+    } else {
+      html += '<div class="bg-white rounded-xl shadow p-5">';
+      html += '<p class="text-red-600">Ensembl 无相关结果</p>';
+      html += '</div>';
+    }
+    if (uniprotData) {
+      html += '<div class="bg-white rounded-xl shadow p-5">';
+      html += '<h2 class="text-xl font-medium mb-2">UniProt 蛋白信息</h2>';
+      html += '<p>蛋白名称: ' + uniprotData.protein_name + '</p>';
+      html += '<p>物种: ' + uniprotData.organism_name + '</p>';
+      html += '<p>UniProt ID: <span class="mono">' + uniprotData.accession + '</span></p>';
+      html += '<p><a href="https://www.uniprot.org/uniprot/' + uniprotData.accession + '" target="_blank" class="text-indigo-600 hover:underline">查看 UniProt 页面</a></p>';
+      html += '</div>';
+    }
+    if (!ensembData && !uniprotData) {
+      html += '<p class="text-red-600">未找到相关基因信息。</p>';
+    }
+    resultDiv.innerHTML = html;
+  } catch (err) {
+    resultDiv.innerHTML = '<p class="text-red-600">查询过程中出现错误：' + err.message + '</p>';
+  }
+}
+</script>
+</body>
+</html>
